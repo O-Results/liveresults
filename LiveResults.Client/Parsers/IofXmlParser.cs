@@ -11,12 +11,12 @@ namespace LiveResults.Client.Parsers
 {
     public class IofXmlParser
     {
-        public static Runner[] ParseFile(string filename, LogMessageDelegate logit, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls)
+        public static Runner[] ParseFile(string filename, LogMessageDelegate logit, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls, bool accumulated)
         {
-            return ParseFile(filename, logit, true, getIdFunc, readRadioControls,out radioControls);
+            return ParseFile(filename, logit, true, getIdFunc, readRadioControls,out radioControls, accumulated);
         }
 
-        public static Runner[] ParseFile(string filename, LogMessageDelegate logit, bool deleteFile, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls)
+        public static Runner[] ParseFile(string filename, LogMessageDelegate logit, bool deleteFile, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls, bool accumulated)
         {
             byte[] fileContents;
             radioControls = null;
@@ -27,14 +27,13 @@ namespace LiveResults.Client.Parsers
 
             fileContents = File.ReadAllBytes(filename);
 
-            if (deleteFile)
-                File.Delete(filename);
+            
 
-            return ParseXmlData(fileContents, logit, deleteFile, getIdFunc, readRadioControls, out radioControls);
+            return ParseXmlData(fileContents, logit, deleteFile, getIdFunc, readRadioControls, out radioControls, accumulated);
 
         }
 
-        public static Runner[] ParseXmlData(byte[] xml, LogMessageDelegate logit, bool deleteFile, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls)
+        public static Runner[] ParseXmlData(byte[] xml, LogMessageDelegate logit, bool deleteFile, GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls, bool accumulated)
         {
             Runner[] runners;
 
@@ -53,7 +52,7 @@ namespace LiveResults.Client.Parsers
             //Detect IOF-XML version..
             if (xmlDoc.DocumentElement.Attributes["iofVersion"] != null && xmlDoc.DocumentElement.Attributes["iofVersion"].Value != null && xmlDoc.DocumentElement.Attributes["iofVersion"].Value.StartsWith("3."))
             {
-                runners = IofXmlV3Parser.ParseXmlData(xmlDoc, logit, deleteFile, getIdFunc, readRadioControls, out radioControls);
+                runners = IofXmlV3Parser.ParseXmlData(xmlDoc, logit, deleteFile, getIdFunc, readRadioControls, out radioControls, accumulated);
             }
             else
             {
