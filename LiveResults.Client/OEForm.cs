@@ -16,6 +16,7 @@ namespace LiveResults.Client
     public partial class OEForm : Form
     {
         readonly List<EmmaMysqlClient> m_clients;
+        EmmaMysqlClient m_accumClient;
         OSParser m_osParser;
         OEParser m_oeParser;
 
@@ -43,6 +44,7 @@ namespace LiveResults.Client
 
         readonly List<FormatItem> m_supportedFormats = new List<FormatItem>();
         private int m_compid = -1;
+        private int m_accumId = -1;
         public OEForm(bool showCSVFormats=true)
         {
             InitializeComponent();
@@ -112,6 +114,11 @@ namespace LiveResults.Client
                     c.Stop();
                 }
             }
+
+            if (m_accumClient != null)
+            {
+                m_accumClient.Stop();
+            }
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -139,10 +146,16 @@ namespace LiveResults.Client
                 return;
             }
 
+            if (!string.IsNullOrEmpty(textBox1.Text))
+            {
+                m_accumId = Convert.ToInt32(textBox1.Text);
+            }
+
             m_compid = Convert.ToInt32(txtCompID.Text);
             m_parsedZeroTime = 0;
             listBox1.Items.Clear();
             m_clients.Clear();
+            m_accumClient = null;
             Logit("Reading servers from config (eventually resolving online)");
             Application.DoEvents();
             EmmaMysqlClient.EmmaServer[] servers = EmmaMysqlClient.GetServersFromConfig();
@@ -203,6 +216,13 @@ namespace LiveResults.Client
                 client.OnLogMessage += client_OnLogMessage;
                 client.Start();
                 m_clients.Add(client);
+
+                if (m_accumId > 0)
+                {
+                    var accumClient = new EmmaMysqlClient(server.Host, 3306, server.User, server.Pw, server.DB, m_accumId, useInternalIDAllocation);
+                    accumClient.Start();
+                    m_accumClient = accumClient;
+                }
             }
 #if _CASPARCG_
             casparForm = new LiveResults.CasparClient.CasparControlFrm();
@@ -216,51 +236,58 @@ namespace LiveResults.Client
         {
             foreach (EmmaMysqlClient c in m_clients)
             {
-                if (!c.IsRunnerAdded(newResult.ID))
-                {
-                    c.AddRunner(new Runner(newResult.ID, newResult.RunnerName, newResult.RunnerClub, newResult.Class));
-                }
-                else
-                    c.UpdateRunnerInfo(newResult.ID, newResult.RunnerName, newResult.RunnerClub, newResult.Class, null);
-
-
-                if (newResult.StartTime >= 0)
-                {
-                    c.SetRunnerStartTime(newResult.ID, newResult.StartTime + m_parsedZeroTime);
-                }
-
-                if (newResult is RelayResult)
-                {
-                    var rr = newResult as RelayResult;
-                    c.SetRunnerResult(newResult.ID, rr.OverallTime, rr.OverallStatus);
-                }
-                else
-                {
-                    c.SetRunnerResult(newResult.ID, newResult.Time, newResult.Status);
-                }
-
-                if (newResult.SplitTimes != null)
-                {
-                    foreach (ResultStruct r in newResult.SplitTimes)
-                    {
-                        c.SetRunnerSplit(newResult.ID, r.ControlCode, r.Time);
-                    }
-                }
-
-                if (newResult is RelayResult && newResult.Time > 0)
-                {
-                    var rs = newResult as RelayResult;
-                    int nextLegId = OSParser.CreateID(rs.LegNumber + 1, OSParser.StNoFromID(rs.LegNumber, rs.ID));
-                    if (c.IsRunnerAdded(nextLegId))
-                    {
-                        if (c.GetRunner(nextLegId).StartTime <= 0)
-                        {
-                            c.SetRunnerStartTime(nextLegId, rs.StartTime + rs.Time + m_parsedZeroTime);
-                        }
-                    }
-                }
-
+                m_OSParser_Client(c, newResult);
             }
+
+            m_OSParser_Client(m_accumClient, newResult);
+        }
+
+        void m_OSParser_Client(EmmaMysqlClient c, Result newResult) 
+        { 
+            if (!c.IsRunnerAdded(newResult.ID))
+            {
+                c.AddRunner(new Runner(newResult.ID, newResult.RunnerName, newResult.RunnerClub, newResult.Class));
+            }
+            else
+                c.UpdateRunnerInfo(newResult.ID, newResult.RunnerName, newResult.RunnerClub, newResult.Class, null);
+
+
+            if (newResult.StartTime >= 0)
+            {
+                c.SetRunnerStartTime(newResult.ID, newResult.StartTime + m_parsedZeroTime);
+            }
+
+            if (newResult is RelayResult)
+            {
+                var rr = newResult as RelayResult;
+                c.SetRunnerResult(newResult.ID, rr.OverallTime, rr.OverallStatus);
+            }
+            else
+            {
+                c.SetRunnerResult(newResult.ID, newResult.Time, newResult.Status);
+            }
+
+            if (newResult.SplitTimes != null)
+            {
+                foreach (ResultStruct r in newResult.SplitTimes)
+                {
+                    c.SetRunnerSplit(newResult.ID, r.ControlCode, r.Time);
+                }
+            }
+
+            if (newResult is RelayResult && newResult.Time > 0)
+            {
+                var rs = newResult as RelayResult;
+                int nextLegId = OSParser.CreateID(rs.LegNumber + 1, OSParser.StNoFromID(rs.LegNumber, rs.ID));
+                if (c.IsRunnerAdded(nextLegId))
+                {
+                    if (c.GetRunner(nextLegId).StartTime <= 0)
+                    {
+                        c.SetRunnerStartTime(nextLegId, rs.StartTime + rs.Time + m_parsedZeroTime);
+                    }
+                }
+            }
+
         }
 
         void client_OnLogMessage(string msg)
@@ -279,7 +306,10 @@ namespace LiveResults.Client
                 try
                 {
                     RadioControl[] radioControls;
-                    var runners = IofXmlParser.ParseFile(fullFilename, Logit,new IofXmlParser.IDCalculator(m_compid).CalculateID,chkAutoCreateRadioControls.Checked, out radioControls);
+                    var runners = IofXmlParser.ParseFile(fullFilename, Logit,new IofXmlParser.IDCalculator(m_compid).CalculateID,chkAutoCreateRadioControls.Checked, out radioControls, false);
+                    var runnersAccumulated = IofXmlParser.ParseFile(fullFilename, Logit, new IofXmlParser.IDCalculator(m_accumId).CalculateID, chkAutoCreateRadioControls.Checked, out radioControls, true);
+                    File.Delete(fullFilename);
+
                     processed = true;
 
                     foreach (EmmaMysqlClient c in m_clients)
@@ -289,6 +319,15 @@ namespace LiveResults.Client
                             c.MergeRadioControls(radioControls);
                         }
                         c.UpdateCurrentResultsFromNewSet(runners);
+                    }
+
+                    if (m_accumClient != null)
+                    {
+                        if (radioControls != null)
+                        {
+                            m_accumClient.MergeRadioControls(radioControls);
+                        }
+                        m_accumClient.UpdateCurrentResultsFromNewSet(runnersAccumulated);
                     }
                 }
                 catch (Exception ee)
@@ -343,6 +382,11 @@ namespace LiveResults.Client
                     c.Stop();
                 }
                 m_clients.Clear();
+
+                if (m_accumClient != null)
+                {
+                    m_accumClient.Stop();
+                }
                 timer1_Tick(null, null);
             }
             fileSystemWatcher1.EnableRaisingEvents = false;
@@ -487,6 +531,11 @@ namespace LiveResults.Client
             {
                 Clipboard.SetText("--No data--");
             }
+
+        }
+
+        private void label6_Click(object sender, EventArgs e)
+        {
 
         }
     }

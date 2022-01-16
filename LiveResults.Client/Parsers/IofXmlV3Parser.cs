@@ -12,7 +12,7 @@ namespace LiveResults.Client.Parsers
     {
         static readonly Dictionary<string, string> m_suppressedIDCalculationErrors = new Dictionary<string, string>();
 
-        public static Runner[] ParseXmlData(XmlDocument xmlDoc, LogMessageDelegate logit, bool deleteFile, LiveResults.Client.Parsers.IofXmlParser.GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls)
+        public static Runner[] ParseXmlData(XmlDocument xmlDoc, LogMessageDelegate logit, bool deleteFile, LiveResults.Client.Parsers.IofXmlParser.GetIdDelegate getIdFunc, bool readRadioControls, out RadioControl[] radioControls, bool accumulated)
         {
             var nsMgr = new XmlNamespaceManager(xmlDoc.NameTable);
             nsMgr.AddNamespace("iof", "http://www.orienteering.org/datastandard/3.0");
@@ -193,14 +193,33 @@ namespace LiveResults.Client.Parsers
                         string familyname;
                         string givenname;
                         string club;
+                        
                         if (!ParseNameClubAndId(personNode, nsMgr, out familyname, out givenname, out club)) continue;
 
 
                         var runner = new Runner(-1, givenname + " " + familyname, club, className);
+                        XmlNode competitorStatusNode;
+                        XmlNode resultTimeNode;
+                        XmlNode startTimeNode;
 
-                        var competitorStatusNode = personNode.SelectSingleNode("iof:Result/iof:Status",nsMgr);
-                        var resultTimeNode = personNode.SelectSingleNode("iof:Result/iof:Time",nsMgr);
-                        var startTimeNode = personNode.SelectSingleNode("iof:Result/iof:StartTime",nsMgr);
+                        if (accumulated)
+                        {
+                            competitorStatusNode = personNode.SelectSingleNode("iof:Result/iof:OverallResult/iof:Status", nsMgr);
+                            resultTimeNode = personNode.SelectSingleNode("iof:Result/iof:OverallResult/iof:Time", nsMgr);
+                            startTimeNode = null;
+                            XmlNodeList list = personNode.SelectNodes("iof:Result/iof:StartTime", nsMgr);
+                            if (list.Count > 0)
+                            {
+                                startTimeNode = list[list.Count - 1];
+                            }
+                        }
+                        else
+                        {
+                            competitorStatusNode = personNode.SelectSingleNode("iof:Result/iof:Status", nsMgr);
+                            resultTimeNode = personNode.SelectSingleNode("iof:Result/iof:Time", nsMgr);
+                            startTimeNode = personNode.SelectSingleNode("iof:Result/iof:StartTime", nsMgr);
+                        }
+
                         if (competitorStatusNode == null)
                             continue;
 
