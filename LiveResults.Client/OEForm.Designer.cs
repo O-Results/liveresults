@@ -325,7 +325,7 @@
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(144, 25);
             this.label6.TabIndex = 13;
-            this.label6.Text = "AccumulateID";
+            this.label6.Text = "AgregateID";
             // 
             // textBox1
             // 
